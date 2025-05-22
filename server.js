@@ -38,12 +38,15 @@ const authRoutes = require("./Routes/auth.js");
 const BlogsRoutes = require("./Routes/Blogs.js");
 const contactRoute = require("./Routes/contactRoutes.js");
 const serviceRoutes = require("./Routes/serviceRoutes.js");
+const applicationRoutes = require("./Routes/applicationRoutes.js");
 
 app.use("/services", serviceRoutes);
 app.use("/portfolio", portfolioRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/blogs", BlogsRoutes);
 app.use("/contact", contactRoute);
+app.use("/apply", applicationRoutes);
+
 
 // Serve static uploads (e.g., images)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
