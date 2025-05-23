@@ -8,7 +8,7 @@ const path = require("path");
 // ✅ Allow both local and production frontends
 const allowedOrigins = [
   "http://localhost:8080",
-  "https://jharkhand-it-sol-front1.vercel.app"
+  "https://jharkhand-it-sol-front1.vercel.app","https://jharkhand-it-sol-front2.vercel.app"
 ];
 
 // Middleware
