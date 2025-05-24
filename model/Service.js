@@ -1,28 +1,22 @@
+// backend/model/Service.js
 const mongoose = require("mongoose");
 
 const subServiceSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, "Sub-service name is required."],
-    trim: true,
-  },
+  name: { type: String, required: [true, "Sub-service name is required."] },
   slug: {
     type: String,
     required: [true, "Sub-service slug is required."],
-    trim: true,
+    unique: true, // Usually slugs should be unique within their context
     lowercase: true,
+    trim: true,
   },
   description: {
     type: String,
     required: [true, "Sub-service description is required."],
-    trim: true,
   },
-  imageUrl: {
-    // Path to the uploaded image for this sub-service
-    type: String,
-    trim: true,
-  },
-  // You can add more fields like 'iconName' if sub-services have icons too
+  imageUrl: { type: String }, // This will store the Cloudinary URL
+  imagePublicId: { type: String }, // Store Cloudinary public_id for easier deletion
+  // Add other fields as needed
 });
 
 const serviceCategorySchema = new mongoose.Schema(
@@ -30,25 +24,27 @@ const serviceCategorySchema = new mongoose.Schema(
     name: {
       type: String,
       required: [true, "Service category name is required."],
+      unique: true,
       trim: true,
-      unique: true, // Ensure category names are unique
     },
     slug: {
       type: String,
-      required: [true, "Slug is required."],
-      trim: true,
+      required: [true, "Service category slug is required."],
+      unique: true,
       lowercase: true,
-      unique: true, // Ensure slugs are unique
+      trim: true,
     },
     description: {
       type: String,
-      required: [true, "Description is required."],
-      trim: true,
+      required: [true, "Service category description is required."],
     },
     mainImage: {
-      // Path to the uploaded main image for the category
-      type: String,
-      required: [true, "A main image URL is required."],
+      type: String, // Cloudinary URL
+      required: [true, "Main image URL is required."],
+    },
+    mainImagePublicId: {
+      type: String, // Cloudinary public_id
+      required: [true, "Main image public ID is required."],
     },
     subServices: [subServiceSchema],
     isActive: {
@@ -56,18 +52,6 @@ const serviceCategorySchema = new mongoose.Schema(
       default: true,
     },
   },
-  {
-    timestamps: true, // Adds createdAt and updatedAt
-  }
+  { timestamps: true }
 );
-
-// Optional: Create an index for faster querying by slug if you have many categories
-serviceCategorySchema.index({ slug: 1 });
-serviceCategorySchema.index({ name: 1 });
-
-const ServiceCategory = mongoose.model(
-  "ServiceCategory",
-  serviceCategorySchema
-);
-
-module.exports = ServiceCategory;
+module.exports = mongoose.model("ServiceCategory", serviceCategorySchema);
