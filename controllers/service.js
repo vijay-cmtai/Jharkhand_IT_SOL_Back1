@@ -1,27 +1,24 @@
-const ServiceCategory = require("../model/Service");
+// backend/controllers/serviceController.js
+const ServiceCategory = require("../model/Service"); // Adjust path
 const fs = require("fs");
 const path = require("path");
+const mongoose = require("mongoose");
 
-// Helper function to delete a file if it exists
-const deleteFile = (filePath) => {
-  if (filePath) {
-    const fullPath = path.join(__dirname, "..", filePath); // Assumes filePath is relative to project root
-    if (fs.existsSync(fullPath)) {
-      fs.unlink(fullPath, (err) => {
-        if (err) console.error(`Error deleting file ${fullPath}:`, err);
-      });
-    }
+// Helper function to delete a file if it exists (uses absolute path)
+const deleteFileByAbsolutePath = (absolutePath) => {
+  if (absolutePath && fs.existsSync(absolutePath)) {
+    fs.unlink(absolutePath, (err) => {
+      if (err) console.error(`Error deleting file ${absolutePath}:`, err);
+    });
   }
 };
 
-// @desc    Create a new Service Category
-// @route   POST /api/services
-// @access  Private/Admin
+// --- CREATE SERVICE CATEGORY ---
 exports.createServiceCategory = async (req, res) => {
+  const uploadedFileAbsolutePaths = [];
   try {
     const { name, slug, description, isActive, subServicesData } = req.body;
 
-    // Check if service with the same name or slug already exists
     const existingServiceByName = await ServiceCategory.findOne({ name });
     if (existingServiceByName) {
       return res
@@ -41,49 +38,52 @@ exports.createServiceCategory = async (req, res) => {
       try {
         parsedSubServices = JSON.parse(subServicesData);
       } catch (e) {
+        uploadedFileAbsolutePaths.forEach(deleteFileByAbsolutePath);
         return res.status(400).json({
           error: "Invalid subServicesData format. Expected JSON string.",
         });
       }
     }
 
-    // Handle file uploads
-    let mainImagePath = null;
-    const subServiceImagePaths = [];
+    let mainImagePathRelative = null;
+    const subServiceImagePathsRelative = [];
 
     if (req.files && req.files.length > 0) {
       req.files.forEach((file) => {
-        const relativePath = `uploads/services/${file.destination.endsWith("main") ? "main" : "sub"}/${file.filename}`;
+        uploadedFileAbsolutePaths.push(file.path);
+        const projectRoot = path.join(__dirname, "..");
+        let relativePath = path.relative(projectRoot, file.path);
+        relativePath = relativePath.replace(/\\/g, "/");
+
         if (file.fieldname === "mainImage") {
-          mainImagePath = relativePath;
+          mainImagePathRelative = relativePath;
         } else if (file.fieldname.startsWith("subServiceImage_")) {
           const index = parseInt(file.fieldname.split("_")[1]);
-          // Ensure subServiceImagePaths array is large enough
-          while (subServiceImagePaths.length <= index) {
-            subServiceImagePaths.push(null);
+          while (subServiceImagePathsRelative.length <= index) {
+            subServiceImagePathsRelative.push(null);
           }
-          subServiceImagePaths[index] = relativePath;
+          subServiceImagePathsRelative[index] = relativePath;
         }
       });
     }
 
-    if (!mainImagePath) {
+    if (!mainImagePathRelative) {
+      uploadedFileAbsolutePaths.forEach(deleteFileByAbsolutePath);
       return res.status(400).json({ error: "Main image is required." });
     }
 
-    // Combine parsedSubServices metadata with their image paths
     const finalSubServices = parsedSubServices.map((sub, index) => ({
       ...sub,
-      imageUrl: subServiceImagePaths[index] || null, // Assign path or null if no image for this sub-service
+      imageUrl: subServiceImagePathsRelative[index] || null,
     }));
 
     const newServiceCategory = new ServiceCategory({
       name,
       slug,
       description,
-      mainImage: mainImagePath,
+      mainImage: mainImagePathRelative,
       subServices: finalSubServices,
-      isActive: isActive === "true", // FormData sends booleans as strings
+      isActive: isActive === "true",
     });
 
     const savedServiceCategory = await newServiceCategory.save();
@@ -93,20 +93,8 @@ exports.createServiceCategory = async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating service category:", error);
-    // Clean up uploaded files if an error occurs during DB save
-    if (req.files && req.files.length > 0) {
-      req.files.forEach((file) => {
-        const tempPath = path.join(
-          __dirname,
-          "..",
-          "uploads",
-          "services",
-          file.destination.endsWith("main") ? "main" : "sub",
-          file.filename
-        );
-        deleteFile(tempPath); // Use relative path for deletion
-      });
-    }
+    uploadedFileAbsolutePaths.forEach(deleteFileByAbsolutePath);
+
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((val) => val.message);
       return res.status(400).json({ error: messages.join(", ") });
@@ -117,36 +105,39 @@ exports.createServiceCategory = async (req, res) => {
   }
 };
 
-// @desc    Get all Service Categories
-// @route   GET /api/services
-// @access  Public (or Private/Admin depending on use case)
+// --- GET ALL SERVICE CATEGORIES ---  <<<<<<<<<<<<<<<<<<<<<< ADDED
 exports.getAllServiceCategories = async (req, res) => {
   try {
-    const services = await ServiceCategory.find({ isActive: true }).sort({
-      displayOrder: 1,
-      name: 1,
-    }); // displayOrder removed, so just by name or createdAt
-    // const services = await ServiceCategory.find().sort({ name: 1 });
-    res.status(200).json(services);
+    // Fetching all services, including inactive ones if for admin panel,
+    // or only active ones for public view. Adjust filter as needed.
+    // For an admin panel "find" that lists all, you might not filter by isActive initially.
+    // Or, if this /find is public, filter by isActive: true
+    const services = await ServiceCategory.find({}).sort({ name: 1 }); // Example: finds all for admin
+    // const services = await ServiceCategory.find({ isActive: true }).sort({ name: 1 }); // Example: finds active for public
+
+    res.status(200).json(services); // Make sure your frontend expects an array directly or an object like { data: services }
   } catch (error) {
-    console.error("Error fetching service categories:", error);
+    console.error("Error fetching all service categories:", error);
     res
       .status(500)
-      .json({ error: "Server error while fetching service categories." });
+      .json({ error: "Server error while fetching all service categories." });
   }
 };
 
-// @desc    Get a single Service Category by slug (or ID)
-// @route   GET /api/services/:slugOrId
-// @access  Public
+// --- GET SERVICE CATEGORY BY SLUG OR ID --- <<<<<<<<<<<<<<<<<<<<<< ADDED
 exports.getServiceCategoryBySlugOrId = async (req, res) => {
   try {
-    let service = await ServiceCategory.findOne({ slug: req.params.slugOrId });
+    const { slugOrId } = req.params;
+    let service;
+
+    // Check if slugOrId is a valid MongoDB ObjectId
+    if (mongoose.Types.ObjectId.isValid(slugOrId)) {
+      service = await ServiceCategory.findById(slugOrId);
+    }
+
+    // If not found by ID (or if it wasn't a valid ID format), try by slug
     if (!service) {
-      // Try finding by ID if not found by slug and if param looks like an ID
-      if (mongoose.Types.ObjectId.isValid(req.params.slugOrId)) {
-        service = await ServiceCategory.findById(req.params.slugOrId);
-      }
+      service = await ServiceCategory.findOne({ slug: slugOrId });
     }
 
     if (!service) {
@@ -154,9 +145,12 @@ exports.getServiceCategoryBySlugOrId = async (req, res) => {
     }
     res.status(200).json(service);
   } catch (error) {
-    console.error("Error fetching service category:", error);
-    if (error.kind === "ObjectId") {
-      return res.status(400).json({ error: "Invalid ID format" });
+    console.error("Error fetching service category by slug/ID:", error);
+    // Avoid sending a 400 for ObjectId error if it could be a slug
+    if (error.name === "CastError" && error.kind === "ObjectId") {
+      // This specific error might occur if an invalid ID format is passed and findById is called.
+      // However, our logic tries slug next, so we only 404 if truly not found.
+      // The final !service check handles the "not found" case.
     }
     res
       .status(500)
@@ -164,36 +158,39 @@ exports.getServiceCategoryBySlugOrId = async (req, res) => {
   }
 };
 
-// @desc    Delete a Service Category
-// @route   DELETE /api/services/:id
-// @access  Private/Admin
+// --- DELETE SERVICE CATEGORY ---
 exports.deleteServiceCategory = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid ID format." });
+    }
     const serviceCategory = await ServiceCategory.findById(req.params.id);
 
     if (!serviceCategory) {
       return res.status(404).json({ error: "Service category not found." });
     }
 
-    // Delete associated images
-    deleteFile(serviceCategory.mainImage);
+    const mainImageAbsolutePath = serviceCategory.mainImage
+      ? path.join(__dirname, "..", serviceCategory.mainImage)
+      : null;
+    deleteFileByAbsolutePath(mainImageAbsolutePath);
+
     if (serviceCategory.subServices && serviceCategory.subServices.length > 0) {
-      serviceCategory.subServices.forEach((sub) => deleteFile(sub.imageUrl));
+      serviceCategory.subServices.forEach((sub) => {
+        const subImageAbsolutePath = sub.imageUrl
+          ? path.join(__dirname, "..", sub.imageUrl)
+          : null;
+        deleteFileByAbsolutePath(subImageAbsolutePath);
+      });
     }
 
-    await serviceCategory.deleteOne(); // Or findByIdAndDelete(req.params.id)
+    await ServiceCategory.findByIdAndDelete(req.params.id);
 
     res.status(200).json({ message: "Service category deleted successfully." });
   } catch (error) {
     console.error("Error deleting service category:", error);
-    if (error.kind === "ObjectId") {
-      return res.status(400).json({ error: "Invalid ID format" });
-    }
     res
       .status(500)
       .json({ error: "Server error while deleting service category." });
   }
 };
-
-// TODO: Implement updateServiceCategory controller
-// exports.updateServiceCategory = async (req, res) => { ... }
