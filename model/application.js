@@ -1,10 +1,10 @@
-// models/Application.js
+// backend/model/application.js
 const mongoose = require("mongoose");
 
 const applicationSchema = new mongoose.Schema(
   {
     jobId: {
-      type: String, // Can be an actual Job ID from another collection or a slug/identifier
+      type: String,
       required: true,
     },
     jobTitle: {
@@ -21,19 +21,22 @@ const applicationSchema = new mongoose.Schema(
       required: [true, "Email is required"],
       trim: true,
       lowercase: true,
-      // Basic email validation, consider using a more robust validator like 'validator' package
       match: [/.+\@.+\..+/, "Please fill a valid email address"],
     },
     phone: {
       type: String,
       trim: true,
-      // You might want to add phone number validation
     },
-    resumePath: {
-      // Path to the uploaded resume file on the server
+    // --- Fields for Cloudinary ---
+    resumeUrl: {
       type: String,
-      required: [true, "Resume is required"],
+      required: [true, "Resume URL from Cloudinary is required"], // Make this required
     },
+    resumePublicId: {
+      type: String,
+      required: [true, "Resume Public ID from Cloudinary is required"], // Make this required
+    },
+    // --- resumePath is REMOVED ---
     coverLetter: {
       type: String,
       trim: true,
@@ -47,10 +50,7 @@ const applicationSchema = new mongoose.Schema(
       enum: ["Pending", "Reviewed", "Shortlisted", "Rejected", "Hired"],
       default: "Pending",
     },
-    appliedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    // appliedAt will be handled by timestamps: true
   },
   {
     timestamps: true, // Adds createdAt and updatedAt timestamps
