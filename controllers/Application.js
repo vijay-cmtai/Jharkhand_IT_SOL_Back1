@@ -2,7 +2,15 @@
 const Application = require("../model/application");
 const fs = require("fs");
 const path = require("path");
+
 exports.submitApplication = async (req, res) => {
+  console.log("--- [Controller] submitApplication: Start ---");
+  console.log(
+    "[Controller] submitApplication: req.body:",
+    JSON.stringify(req.body, null, 2)
+  ); // Log all text fields
+  console.log("[Controller] submitApplication: req.file:", req.file); // CRITICAL: Log the file object from Multer
+
   try {
     const {
       jobId,
@@ -15,16 +23,37 @@ exports.submitApplication = async (req, res) => {
     } = req.body;
 
     if (!req.file) {
-      return res.status(400).json({ message: "Resume file is required." });
+      // This check is now more robust as multer's fileFilter will pass an error if type is wrong
+      console.error(
+        "[Controller] submitApplication: Error - req.file is undefined. Multer might have rejected the file or it wasn't sent correctly."
+      );
+      return res
+        .status(400)
+        .json({ message: "Resume file is required or file type was invalid." });
     }
 
+    // Basic validation for required text fields (though frontend should also handle this)
     if (!jobId || !jobTitle || !fullName || !email) {
+      // Clean up uploaded file if other validations fail post-upload
+      if (req.file && req.file.path) {
+        fs.unlink(req.file.path, (err) => {
+          if (err)
+            console.error(
+              "Error deleting orphaned file after validation fail:",
+              err
+            );
+        });
+      }
       return res.status(400).json({
         message: "Job ID, Job Title, Full Name, and Email are required fields.",
       });
     }
 
-    const resumePath = req.file.path; // Path where multer saved the file
+    const resumePath = req.file.path; // Path where multer saved the file (now a disk path)
+    console.log(
+      "[Controller] submitApplication: Resume saved to path:",
+      resumePath
+    );
 
     const newApplication = new Application({
       jobId,
@@ -38,25 +67,56 @@ exports.submitApplication = async (req, res) => {
     });
 
     const savedApplication = await newApplication.save();
+    console.log(
+      "[Controller] submitApplication: Application saved successfully."
+    );
     res.status(201).json({
       message:
         "Application submitted successfully! We will get back to you soon.",
       application: savedApplication,
     });
   } catch (error) {
-    console.error("Error submitting application:", error);
+    console.error(
+      "[Controller] submitApplication: Error submitting application:",
+      error
+    );
+    // If an error occurs after file upload, delete the orphaned file
+    if (req.file && req.file.path) {
+      fs.unlink(req.file.path, (err) => {
+        if (err)
+          console.error(
+            "Error deleting orphaned file after submission error:",
+            err
+          );
+        else
+          console.log(
+            "Orphaned file deleted due to submission error:",
+            req.file.path
+          );
+      });
+    }
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((val) => val.message);
       return res.status(400).json({ message: messages.join(", ") });
+    }
+    // Handle Multer errors specifically (e.g., file too large, or error from fileFilter)
+    if (error instanceof multer.MulterError) {
+      return res
+        .status(400)
+        .json({ message: `File upload error: ${error.message}` });
+    }
+    if (error.message && error.message.startsWith("Invalid file type")) {
+      // From our custom fileFilter error
+      return res.status(400).json({ message: error.message });
     }
     res
       .status(500)
       .json({ message: "Server error while submitting application." });
   }
 };
+
 exports.getAllApplications = async (req, res) => {
   try {
-    // Implement pagination if needed
     const applications = await Application.find().sort({ appliedAt: -1 });
     res.status(200).json(applications);
   } catch (error) {
@@ -109,77 +169,82 @@ exports.updateApplicationStatus = async (req, res) => {
     res.status(500).json({ message: "Server error." });
   }
 };
+
 exports.deleteApplication = async (req, res) => {
-  console.log("--- Starting deleteApplication ---");
-  console.log("Request Params ID:", req.params.id);
+  console.log("--- [Controller] deleteApplication: Start ---");
+  console.log(
+    "[Controller] deleteApplication: Request Params ID:",
+    req.params.id
+  );
 
   try {
     const application = await Application.findById(req.params.id);
-    console.log("Application found by findById:", application);
+    console.log(
+      "[Controller] deleteApplication: Application found by findById:",
+      application ? "Yes" : "No"
+    );
 
     if (!application) {
-      console.log("Application not found in DB.");
+      console.log(
+        "[Controller] deleteApplication: Application not found in DB."
+      );
       return res.status(404).json({ message: "Application not found." });
     }
 
-    // --- Optional: Delete the resume file from the server ---
     if (application.resumePath) {
-      console.log("Resume path from DB:", application.resumePath);
-      // IMPORTANT: Adjust this path based on how resumePath is stored and your project structure
-      // If resumePath is like "uploads/resumes/file.pdf" (relative to project root)
-      const fullResumePath = path.resolve(
-        __dirname,
-        "..",
+      console.log(
+        "[Controller] deleteApplication: Resume path from DB:",
         application.resumePath
-      ); // Go up one level from 'controllers' to project root
-      // If resumePath is an absolute path, then just: const fullResumePath = application.resumePath;
+      );
+      // Assuming application.resumePath is the absolute path or a path resolvable from project root
+      // as stored by req.file.path from multer.diskStorage
+      const fullResumePath = application.resumePath; // Directly use the stored path
 
-      console.log("Attempting to delete resume file at:", fullResumePath);
+      console.log(
+        "[Controller] deleteApplication: Attempting to delete resume file at:",
+        fullResumePath
+      );
 
-      // Check if file exists before attempting to delete
       if (fs.existsSync(fullResumePath)) {
         fs.unlink(fullResumePath, (err) => {
           if (err) {
             console.error(
-              `Failed to delete resume file: ${fullResumePath}`,
+              `[Controller] deleteApplication: Failed to delete resume file: ${fullResumePath}`,
               err
             );
-            // Decide if you want to stop the process or just log the error
-            // For now, we'll just log and continue to delete DB record
           } else {
-            console.log(`Successfully deleted resume file: ${fullResumePath}`);
+            console.log(
+              `[Controller] deleteApplication: Successfully deleted resume file: ${fullResumePath}`
+            );
           }
         });
       } else {
         console.log(
-          `Resume file not found at path (already deleted or wrong path?): ${fullResumePath}`
+          `[Controller] deleteApplication: Resume file not found at path (already deleted or wrong path?): ${fullResumePath}`
         );
       }
     } else {
-      console.log("No resume path found in application document.");
+      console.log(
+        "[Controller] deleteApplication: No resume path found in application document."
+      );
     }
-    // --- End Optional File Deletion ---
 
     console.log(
-      "Attempting to delete application document from DB with ID:",
+      "[Controller] deleteApplication: Attempting to delete application document from DB with ID:",
       application._id
     );
     const deleteResult = await Application.deleteOne({ _id: application._id });
-    console.log("MongoDB deleteOne result:", deleteResult);
-
-    if (deleteResult.deletedCount === 0) {
-      console.log(
-        "Application document was not deleted from DB (maybe already deleted by another process?)."
-      );
-      // This might happen if the document was deleted between findById and deleteOne
-      // but findById should have caught it. Still, good to be aware.
-      // You might still want to send a 200 if the intent was to ensure it's gone.
-    }
+    console.log(
+      "[Controller] deleteApplication: MongoDB deleteOne result:",
+      deleteResult
+    );
 
     res.status(200).json({ message: "Application deleted successfully." });
-    console.log("--- deleteApplication finished successfully ---");
+    console.log(
+      "--- [Controller] deleteApplication: Finished successfully ---"
+    );
   } catch (error) {
-    console.error("--- ERROR in deleteApplication ---");
+    console.error("--- [Controller] ERROR in deleteApplication ---");
     console.error("Error Name:", error.name);
     console.error("Error Message:", error.message);
     console.error("Error Stack:", error.stack);
