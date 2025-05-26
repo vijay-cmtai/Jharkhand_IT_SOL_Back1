@@ -1,15 +1,24 @@
-// controllers/applicationController.js
+// backend/controllers/applicationController.js
 const Application = require("../model/application");
-const fs = require("fs");
-const path = require("path");
+const cloudinary = require("../config/cloudinaryConfig"); // Import your Cloudinary config
+const multer = require("multer"); // To check for MulterError instances
 
 exports.submitApplication = async (req, res) => {
-  console.log("--- [Controller] submitApplication: Start ---");
+  console.log("--- [Controller] submitApplication (Cloudinary): Start ---");
   console.log(
     "[Controller] submitApplication: req.body:",
     JSON.stringify(req.body, null, 2)
-  ); // Log all text fields
-  console.log("[Controller] submitApplication: req.file:", req.file); // CRITICAL: Log the file object from Multer
+  );
+  console.log(
+    "[Controller] submitApplication: req.file:",
+    req.file
+      ? {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        }
+      : "No file"
+  );
 
   try {
     const {
@@ -22,38 +31,77 @@ exports.submitApplication = async (req, res) => {
       portfolioLink,
     } = req.body;
 
-    if (!req.file) {
-      // This check is now more robust as multer's fileFilter will pass an error if type is wrong
-      console.error(
-        "[Controller] submitApplication: Error - req.file is undefined. Multer might have rejected the file or it wasn't sent correctly."
-      );
-      return res
-        .status(400)
-        .json({ message: "Resume file is required or file type was invalid." });
-    }
-
-    // Basic validation for required text fields (though frontend should also handle this)
+    // Basic validation for required text fields
     if (!jobId || !jobTitle || !fullName || !email) {
-      // Clean up uploaded file if other validations fail post-upload
-      if (req.file && req.file.path) {
-        fs.unlink(req.file.path, (err) => {
-          if (err)
-            console.error(
-              "Error deleting orphaned file after validation fail:",
-              err
-            );
-        });
-      }
       return res.status(400).json({
         message: "Job ID, Job Title, Full Name, and Email are required fields.",
       });
     }
 
-    const resumePath = req.file.path; // Path where multer saved the file (now a disk path)
-    console.log(
-      "[Controller] submitApplication: Resume saved to path:",
-      resumePath
-    );
+    if (!req.file) {
+      console.error(
+        "[Controller] submitApplication: Error - req.file is undefined."
+      );
+      return res.status(400).json({ message: "Resume file is required." });
+    }
+
+    let resumeUrl = "";
+    let resumePublicId = "";
+
+    // Upload to Cloudinary
+    try {
+      console.log(
+        "[Controller] submitApplication: Uploading resume to Cloudinary..."
+      );
+      const uploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: "job_applications/resumes", // Optional: organize in Cloudinary
+            resource_type: "raw", // For PDF/DOCX. Use "image" for images.
+            // public_id: `resume_${jobId}_${Date.now()}`, // Optional: custom public_id
+            allowed_formats: ["pdf", "doc", "docx"], // Server-side format validation
+          },
+          (error, result) => {
+            if (error) {
+              console.error("[Cloudinary Upload Error]:", error);
+              return reject(error);
+            }
+            resolve(result);
+          }
+        );
+        uploadStream.end(req.file.buffer); // Pass the buffer from memoryStorage
+      });
+
+      if (!uploadResult || !uploadResult.secure_url) {
+        throw new Error("Cloudinary upload failed to return a secure URL.");
+      }
+
+      resumeUrl = uploadResult.secure_url;
+      resumePublicId = uploadResult.public_id;
+      console.log(
+        "[Controller] submitApplication: Resume uploaded to Cloudinary:",
+        { resumeUrl, resumePublicId }
+      );
+    } catch (uploadError) {
+      console.error(
+        "[Controller] submitApplication: Cloudinary upload failed:",
+        uploadError
+      );
+      // Check if the error is from Cloudinary's allowed_formats
+      if (
+        uploadError.message &&
+        uploadError.message.toLowerCase().includes("invalid file type")
+      ) {
+        return res
+          .status(400)
+          .json({
+            message: "Invalid file type. Cloudinary rejected the file format.",
+          });
+      }
+      return res
+        .status(500)
+        .json({ message: "Failed to upload resume to cloud storage." });
+    }
 
     const newApplication = new Application({
       jobId,
@@ -61,14 +109,15 @@ exports.submitApplication = async (req, res) => {
       fullName,
       email,
       phone,
-      resumePath, // Store the path to the resume
+      resumeUrl, // Store Cloudinary URL
+      resumePublicId, // Store Cloudinary Public ID
       coverLetter,
       portfolioLink,
     });
 
     const savedApplication = await newApplication.save();
     console.log(
-      "[Controller] submitApplication: Application saved successfully."
+      "[Controller] submitApplication: Application saved successfully with Cloudinary links."
     );
     res.status(201).json({
       message:
@@ -76,37 +125,19 @@ exports.submitApplication = async (req, res) => {
       application: savedApplication,
     });
   } catch (error) {
-    console.error(
-      "[Controller] submitApplication: Error submitting application:",
-      error
-    );
-    // If an error occurs after file upload, delete the orphaned file
-    if (req.file && req.file.path) {
-      fs.unlink(req.file.path, (err) => {
-        if (err)
-          console.error(
-            "Error deleting orphaned file after submission error:",
-            err
-          );
-        else
-          console.log(
-            "Orphaned file deleted due to submission error:",
-            req.file.path
-          );
-      });
-    }
+    console.error("[Controller] submitApplication: General Error:", error);
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((val) => val.message);
       return res.status(400).json({ message: messages.join(", ") });
     }
-    // Handle Multer errors specifically (e.g., file too large, or error from fileFilter)
     if (error instanceof multer.MulterError) {
+      // Errors from Multer (e.g., file too large)
       return res
         .status(400)
         .json({ message: `File upload error: ${error.message}` });
     }
-    if (error.message && error.message.startsWith("Invalid file type")) {
-      // From our custom fileFilter error
+    // This catches errors from `new Error("Invalid resume file type...")` in multerFileFilter
+    if (error.message && error.message.startsWith("Invalid resume file type")) {
       return res.status(400).json({ message: error.message });
     }
     res
@@ -115,6 +146,7 @@ exports.submitApplication = async (req, res) => {
   }
 };
 
+// ... (getAllApplications, getApplicationById, updateApplicationStatus remain the same) ...
 exports.getAllApplications = async (req, res) => {
   try {
     const applications = await Application.find().sort({ appliedAt: -1 });
@@ -171,7 +203,7 @@ exports.updateApplicationStatus = async (req, res) => {
 };
 
 exports.deleteApplication = async (req, res) => {
-  console.log("--- [Controller] deleteApplication: Start ---");
+  console.log("--- [Controller] deleteApplication (Cloudinary): Start ---");
   console.log(
     "[Controller] deleteApplication: Request Params ID:",
     req.params.id
@@ -191,43 +223,44 @@ exports.deleteApplication = async (req, res) => {
       return res.status(404).json({ message: "Application not found." });
     }
 
-    if (application.resumePath) {
+    // --- Delete from Cloudinary ---
+    if (application.resumePublicId) {
       console.log(
-        "[Controller] deleteApplication: Resume path from DB:",
-        application.resumePath
+        "[Controller] deleteApplication: Attempting to delete resume from Cloudinary with public_id:",
+        application.resumePublicId
       );
-      // Assuming application.resumePath is the absolute path or a path resolvable from project root
-      // as stored by req.file.path from multer.diskStorage
-      const fullResumePath = application.resumePath; // Directly use the stored path
-
-      console.log(
-        "[Controller] deleteApplication: Attempting to delete resume file at:",
-        fullResumePath
-      );
-
-      if (fs.existsSync(fullResumePath)) {
-        fs.unlink(fullResumePath, (err) => {
-          if (err) {
-            console.error(
-              `[Controller] deleteApplication: Failed to delete resume file: ${fullResumePath}`,
-              err
-            );
-          } else {
-            console.log(
-              `[Controller] deleteApplication: Successfully deleted resume file: ${fullResumePath}`
-            );
-          }
-        });
-      } else {
+      try {
+        const deletionResult = await cloudinary.uploader.destroy(
+          application.resumePublicId,
+          { resource_type: "raw" }
+        ); // Match resource_type used for upload
         console.log(
-          `[Controller] deleteApplication: Resume file not found at path (already deleted or wrong path?): ${fullResumePath}`
+          "[Controller] deleteApplication: Cloudinary deletion result:",
+          deletionResult
         );
+        if (
+          deletionResult.result !== "ok" &&
+          deletionResult.result !== "not found"
+        ) {
+          // Log error but continue to delete DB record if Cloudinary deletion fails partially
+          console.warn(
+            `[Controller] deleteApplication: Cloudinary deletion for ${application.resumePublicId} might not have been fully successful:`,
+            deletionResult.result
+          );
+        }
+      } catch (cloudinaryError) {
+        console.error(
+          "[Controller] deleteApplication: Error deleting from Cloudinary:",
+          cloudinaryError
+        );
+        // Decide if you want to stop or continue. For now, log and continue.
       }
     } else {
       console.log(
-        "[Controller] deleteApplication: No resume path found in application document."
+        "[Controller] deleteApplication: No resumePublicId found in application document to delete from Cloudinary."
       );
     }
+    // --- End Cloudinary Deletion ---
 
     console.log(
       "[Controller] deleteApplication: Attempting to delete application document from DB with ID:",
@@ -244,11 +277,7 @@ exports.deleteApplication = async (req, res) => {
       "--- [Controller] deleteApplication: Finished successfully ---"
     );
   } catch (error) {
-    console.error("--- [Controller] ERROR in deleteApplication ---");
-    console.error("Error Name:", error.name);
-    console.error("Error Message:", error.message);
-    console.error("Error Stack:", error.stack);
-
+    console.error("--- [Controller] ERROR in deleteApplication ---", error);
     if (error.name === "CastError") {
       return res
         .status(400)
