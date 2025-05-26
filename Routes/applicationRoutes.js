@@ -7,7 +7,7 @@ const {
   getApplicationById,
   updateApplicationStatus,
   deleteApplication,
-} = require("../controllers/application"); // Corrected path if controller name was applicationController.js
+} = require("../controllers/Application"); // Corrected path if controller name was applicationController.js
 const { uploadResume } = require("../middleware/multerUpload");
 
 // The field name "resume" here MUST match the field name used in FormData on the frontend
