@@ -44,7 +44,7 @@ app.use("/services", serviceRoutes);
 app.use("/portfolio", portfolioRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/blogs", BlogsRoutes);
-app.use("/api/contact", contactRoute);
+app.use("/contact", contactRoute);
 app.use("/apply", applicationRoutes);
 
 
