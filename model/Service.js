@@ -1,4 +1,3 @@
-// backend/model/Service.js
 const mongoose = require("mongoose");
 
 const subServiceSchema = new mongoose.Schema({
@@ -6,7 +5,10 @@ const subServiceSchema = new mongoose.Schema({
   slug: {
     type: String,
     required: [true, "Sub-service slug is required."],
-    unique: true, // Usually slugs should be unique within their context
+    // Note: A sub-service slug only needs to be unique within its parent service category, not globally.
+    // If you need global uniqueness, keep 'unique: true'. Otherwise, it's better to remove it.
+    // For this example, we assume it should be unique for simplicity in lookups.
+    unique: true, 
     lowercase: true,
     trim: true,
   },
@@ -16,7 +18,6 @@ const subServiceSchema = new mongoose.Schema({
   },
   imageUrl: { type: String }, // This will store the Cloudinary URL
   imagePublicId: { type: String }, // Store Cloudinary public_id for easier deletion
-  // Add other fields as needed
 });
 
 const serviceCategorySchema = new mongoose.Schema(
@@ -54,4 +55,5 @@ const serviceCategorySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
 module.exports = mongoose.model("ServiceCategory", serviceCategorySchema);
