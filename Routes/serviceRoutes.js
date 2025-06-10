@@ -2,7 +2,7 @@
 
 const express = require("express");
 const router = express.Router();
-const serviceController = require("../controllers/serviceController");
+const serviceController = require("../controllers/service");
 const { uploadServiceImages } = require("../middleware/multerUpload");
 
 // --- Specific Routes First ---
@@ -20,7 +20,6 @@ router.get("/find", serviceController.findAllServiceCategories);
 // @route   GET /services/public - Gets all active service categories (for public site)
 router.get("/public", serviceController.getAllPublicServiceCategories);
 
-
 // --- Generic (Parameterized) Routes Last ---
 
 // @route   GET /services/:slugOrId - Gets a single service by slug or ID
@@ -36,6 +35,5 @@ router.put(
 
 // @route   DELETE /services/:id - Deletes a service category
 router.delete("/:id", serviceController.deleteServiceCategory);
-
 
 module.exports = router;
