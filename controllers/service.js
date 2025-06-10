@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const ServiceCategory = require("../model/Service");
 // IMPORTANT: This controller now depends on the Cloudinary config.
-const { cloudinary } = require("../config/cloudinary"); 
+const { cloudinary } = require("../config/cloudinaryConfig"); 
 
 // Helper function to delete an image from Cloudinary
 const deleteFromCloudinary = async (publicId) => {
