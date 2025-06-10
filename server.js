@@ -40,7 +40,7 @@ const contactRoute = require("./Routes/contactRoutes.js");
 const serviceRoutes = require("./Routes/serviceRoutes.js");
 const applicationRoutes = require("./Routes/applicationRoutes.js");
 
-app.use("/services", serviceRoutes);
+app.use("/api/services", serviceRoutes);
 app.use("/portfolio", portfolioRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/blogs", BlogsRoutes);
