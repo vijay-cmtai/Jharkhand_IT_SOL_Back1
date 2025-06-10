@@ -5,7 +5,7 @@ const router = express.Router();
 
 // Correctly require your controller file and middleware
 const serviceController = require("../controllers/service"); 
-const { uploadServiceImages } = require("../middleware/upload");
+const { uploadServiceImages } = require("../middleware/multerUpload");
 
 // --- Specific string routes must be defined before generic routes ---
 
