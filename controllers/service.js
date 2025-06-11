@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const ServiceCategory = require("../model/Service");
-const cloudinary = require("../config/cloudinary"); // Import Cloudinary config
+const cloudinary = require("../config/cloudinaryConfig"); // Import Cloudinary config
 
 /**
  * Helper function to upload a file buffer to Cloudinary.
