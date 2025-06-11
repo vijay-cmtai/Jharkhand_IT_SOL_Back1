@@ -1,30 +1,32 @@
+// SAHI CODE
+const mongoose = require("mongoose"); // Mongoose bhi require kar lein, best practice hai
 const ServiceCategory = require("../model/Service");
-const fs = 'fs';
-const path = 'path';
+const fs = require("fs");         // <-- Sahi tareeka
+const path = require("path");     // <-- Sahi tareeka
 
 // Helper function to delete a file if it exists
-// Yeh function theek hai, isme koi badlaav nahi chahiye.
+// Ab ye function sahi se kaam karega kyunki fs aur path modules loaded hain.
 const deleteFile = (filePath) => {
   if (filePath) {
-    // filePath ko hamesha project root se relative hona chahiye, jaise "uploads/services/main/image.jpg"
-    const fullPath = path.join(__dirname, "..", "..", filePath); // Assume project root is 2 levels up from /controllers/
+    const fullPath = path.join(__dirname, "..", "..", filePath); // __dirname controller me hai, isliye 2 level up (../..) jaana hoga project root tak.
     if (fs.existsSync(fullPath)) {
       fs.unlink(fullPath, (err) => {
         if (err) console.error(`Error deleting file ${fullPath}:`, err);
         else console.log(`Deleted orphaned file: ${fullPath}`);
       });
     } else {
-        console.warn(`Attempted to delete non-existent file: ${fullPath}`);
+      console.warn(`Attempted to delete non-existent file: ${fullPath}`);
     }
   }
 };
+
+// ... Baaki ka controller code jaisa maine pichhle response me diya tha ...
+// (createServiceCategory, findAllServiceCategories, etc.)
 
 // @desc    Create a new Service Category
 // @route   POST /services/create
 // @access  Private/Admin
 exports.createServiceCategory = async (req, res) => {
-  // Yeh saare file paths ko collect karega jo is request me bane hain,
-  // taaki error hone par inhe delete kiya ja sake.
   const uploadedFilePaths = [];
 
   try {
@@ -32,7 +34,7 @@ exports.createServiceCategory = async (req, res) => {
 
     // --- Input Validation ---
     if (!name || !slug || !description) {
-        return res.status(400).json({ error: "Missing required fields: name, slug, or description." });
+      return res.status(400).json({ error: "Missing required fields: name, slug, or description." });
     }
 
     const existingServiceByName = await ServiceCategory.findOne({ name });
@@ -60,9 +62,7 @@ exports.createServiceCategory = async (req, res) => {
     if (req.files && req.files.length > 0) {
       req.files.forEach((file) => {
         const relativePath = `uploads/services/${file.destination.endsWith("main") ? "main" : "sub"}/${file.filename}`;
-        
-        // Error cleanup ke liye har bani hui file ka path save karlo
-        uploadedFilePaths.push(relativePath); 
+        uploadedFilePaths.push(relativePath);
 
         if (file.fieldname === "mainImage") {
           mainImagePath = relativePath;
@@ -77,7 +77,6 @@ exports.createServiceCategory = async (req, res) => {
     }
 
     if (!mainImagePath) {
-      // Agar main image nahi hai, to baaki saari uploaded files ko delete kardo
       uploadedFilePaths.forEach(deleteFile);
       return res.status(400).json({ error: "Main image is required." });
     }
@@ -100,17 +99,14 @@ exports.createServiceCategory = async (req, res) => {
 
     const savedServiceCategory = await newServiceCategory.save();
     
-    // Success! Ab response bhejo.
     res.status(201).json({
       message: "Service category created successfully",
       data: savedServiceCategory,
     });
 
   } catch (error) {
-    // !!! --- CRITICAL ERROR HANDLING PART (CORRECTED) --- !!!
-    console.error("FULL ERROR in createServiceCategory:", error); // Pura error log karo
-
-    // Database save me error aane par saari uploaded files ko delete kardo.
+    console.error("FULL ERROR in createServiceCategory:", error);
+    
     if (uploadedFilePaths.length > 0) {
         console.log("Database save failed. Cleaning up uploaded files...");
         uploadedFilePaths.forEach(deleteFile);
@@ -121,20 +117,18 @@ exports.createServiceCategory = async (req, res) => {
       return res.status(400).json({ error: messages.join(", ") });
     }
 
-    // Yeh final response hai agar koi aur anjaan error aata hai.
     res.status(500).json({ 
         error: "Server error while creating service category.",
-        // Development me, aap error ka message bhi bhej sakte hain
-        // errorMessage: error.message 
+        errorMessage: error.message 
     });
   }
 };
 
-// @desc    Get all Service Categories
-// @route   GET /services/find
-// @access  Private/Admin
-// Note: Frontend me aapne iska naam findAllServiceCategories rakha tha,
-// lekin yahan getAllServiceCategories hai. Naam consistent rakhein.
+
+// ... baaki ke sabhi functions (findAllServiceCategories, deleteServiceCategory, etc.)
+// ... inme koi badlaav ki zaroorat nahi hai.
+
+// Yeh function bhi theek hai
 exports.findAllServiceCategories = async (req, res) => {
     try {
         const services = await ServiceCategory.find({}).sort({ createdAt: -1 });
@@ -145,9 +139,7 @@ exports.findAllServiceCategories = async (req, res) => {
     }
 };
 
-
-// Baki functions (get by slug, delete) theek lag rahe hain.
-// Lekin delete function ke deleteFile call ko bhi check karlein.
+// Yeh function bhi theek hai
 exports.deleteServiceCategory = async (req, res) => {
   try {
     const serviceCategory = await ServiceCategory.findById(req.params.id);
@@ -155,9 +147,7 @@ exports.deleteServiceCategory = async (req, res) => {
     if (!serviceCategory) {
       return res.status(404).json({ error: "Service category not found." });
     }
-
-    // In paths ko directly deleteFile me bhejna theek hai
-    // kyunki ye database se aa rahe hain aur relative path (e.g., "uploads/...") format me hain.
+    
     deleteFile(serviceCategory.mainImage);
     if (serviceCategory.subServices && serviceCategory.subServices.length > 0) {
       serviceCategory.subServices.forEach((sub) => deleteFile(sub.imageUrl));
@@ -175,17 +165,4 @@ exports.deleteServiceCategory = async (req, res) => {
   }
 };
 
-// Ye public route bhi theek kar dete hain, jisme displayOrder nahi hai.
-exports.getAllPublicServiceCategories = async (req, res) => {
-  try {
-    const services = await ServiceCategory.find({ isActive: true }).sort({ name: 1 });
-    res.status(200).json(services);
-  } catch (error) {
-    console.error("Error fetching public service categories:", error);
-    res.status(500).json({ error: "Server error while fetching categories." });
-  }
-};
-
-// Apne routes file me is function ka naam bhi badalna hoga.
-// router.get("/find", serviceController.getAllServiceCategories);  <-- YEH GALAT HAI
-// router.get("/find", serviceController.findAllServiceCategories); <-- YEH SAHI HAI
+// ... baaki ke controller exports ...
