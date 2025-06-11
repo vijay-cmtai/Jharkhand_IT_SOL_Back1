@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const ServiceCategory = require("../model/Service");
-const cloudinary = require("../config/cloudinaryConfig");
+const cloudinary = require("../config/cloudinaryConfig"); // Make sure this path is correct
 
 /**
  * Helper function to upload a file buffer to Cloudinary.
@@ -34,7 +34,6 @@ const deleteFromCloudinary = async (publicId) => {
     console.error(`Failed to delete from Cloudinary: ${publicId}`, error);
   }
 };
-
 
 // @desc    Create a new Service Category
 exports.createServiceCategory = async (req, res) => {
@@ -195,10 +194,52 @@ exports.findAllServiceCategories = async (req, res) => {
   }
 };
 
-// ... baaki ke find functions (public, by slug) aap yahan add kar sakte hain ...
+// <<< YEH MISSING THA >>>
+// @desc    Get all ACTIVE Service Categories (for public website)
 exports.getAllPublicServiceCategories = async (req, res) => {
-    // ...
+    try {
+        const services = await ServiceCategory.find({ isActive: true }).sort({ name: 1 });
+        res.status(200).json(services);
+    } catch (error) {
+        console.error("!!! CRITICAL ERROR in getAllPublicServiceCategories:", error);
+        res.status(500).json({ error: "Server error while fetching public services." });
+    }
 };
+
+// <<< YEH BHI MISSING THA AUR YAHI PROBLEM THI >>>
+// @desc    Get a single active Service Category by slug
 exports.getServiceCategoryBySlugOrId = async (req, res) => {
-    // ...
+  try {
+    const { slugOrId } = req.params;
+    
+    // Primarily find by slug, as that's the main use case for public detail pages.
+    // Also, ensure the service is active.
+    const service = await ServiceCategory.findOne({ 
+        slug: slugOrId,
+        isActive: true 
+    });
+    
+    // If found, return it.
+    if (service) {
+      return res.status(200).json(service);
+    }
+    
+    // If not found by slug, maybe it was an ID? (Less likely but good to support)
+    if (mongoose.Types.ObjectId.isValid(slugOrId)) {
+        const serviceById = await ServiceCategory.findOne({ 
+            _id: slugOrId, 
+            isActive: true 
+        });
+        if (serviceById) {
+            return res.status(200).json(serviceById);
+        }
+    }
+
+    // If no active service is found by either slug or ID, return 404.
+    return res.status(404).json({ error: "Service not found or is not currently active." });
+
+  } catch (error) {
+    console.error("!!! CRITICAL ERROR in getServiceCategoryBySlugOrId:", error);
+    res.status(500).json({ error: "Server error while fetching the service details." });
+  }
 };
