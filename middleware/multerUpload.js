@@ -1,35 +1,9 @@
-// middleware/multerUpload.js
-
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 
-// --- Helper function to ensure directory exists ---
-const ensureDirExists = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-};
+// Use memoryStorage to handle files as buffers in memory
+const memoryStorage = multer.memoryStorage();
 
-// --- Storage configuration for Service Images ---
-const serviceImageStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    let uploadPath;
-    if (file.fieldname === 'mainImage') {
-      uploadPath = path.join(__dirname, '..', '..', 'uploads', 'services', 'main');
-    } else {
-      uploadPath = path.join(__dirname, '..', '..', 'uploads', 'services', 'sub');
-    }
-    ensureDirExists(uploadPath);
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const extension = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + extension);
-  }
-});
-
+// Filter for images
 const imageFileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image/")) {
     cb(null, true);
@@ -38,50 +12,37 @@ const imageFileFilter = (req, file, cb) => {
   }
 };
 
-// Multer middleware for service images
-const uploadServiceImages = multer({
-  storage: serviceImageStorage,
-  fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }
-}).any();
-
-// --- Storage configuration for Resumes ---
-const resumeStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadPath = path.join(__dirname, '..', '..', 'uploads', 'resumes');
-        ensureDirExists(uploadPath);
-        cb(null, uploadPath);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const extension = path.extname(file.originalname);
-        cb(null, 'resume-' + uniqueSuffix + extension);
-    }
-});
-
+// Filter for resumes
 const resumeFileFilter = (req, file, cb) => {
-  const allowedMimeTypes = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ];
-  if (allowedMimeTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error("Invalid resume file type. Only PDF, DOC, DOCX allowed."), false);
-  }
+    const allowedMimeTypes = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error("Invalid resume file type. Only PDF, DOC, DOCX allowed."), false);
+    }
 };
 
-// <<< BADLAV YAHAN >>>
-// Ab hum sirf multer instance banayenge, .single() yahan call nahi karenge.
+// Multer instance for service images (multiple files)
+const uploadServiceImages = multer({
+  storage: memoryStorage,
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+}).any();
+
+// Multer instance for resume (single file)
+// We export the instance, and .single() will be called in the route
 const uploadResume = multer({
-  storage: resumeStorage,
+  storage: memoryStorage,
   fileFilter: resumeFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
 
 
 module.exports = {
   uploadServiceImages,
-  uploadResume, // Ab yeh ek multer instance hai, jiske paas .single method hai
+  uploadResume,
 };
