@@ -1,9 +1,9 @@
 const multer = require("multer");
 
-// Use memoryStorage to handle files as buffers in memory
+// Use memoryStorage to handle files as buffers in memory, which is ideal for uploading to a third-party service like Cloudinary.
 const memoryStorage = multer.memoryStorage();
 
-// Filter for images
+// Filter for image files
 const imageFileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image/")) {
     cb(null, true);
@@ -12,7 +12,7 @@ const imageFileFilter = (req, file, cb) => {
   }
 };
 
-// Filter for resumes
+// Filter for resume files (PDF, DOC, DOCX)
 const resumeFileFilter = (req, file, cb) => {
     const allowedMimeTypes = [
         "application/pdf",
@@ -26,15 +26,14 @@ const resumeFileFilter = (req, file, cb) => {
     }
 };
 
-// Multer instance for service images (multiple files)
+// Multer instance for service images (accepts any number of files)
 const uploadServiceImages = multer({
   storage: memoryStorage,
   fileFilter: imageFileFilter,
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 }).any();
 
-// Multer instance for resume (single file)
-// We export the instance, and .single() will be called in the route
+// Multer instance for resume (to be used with .single() in the route)
 const uploadResume = multer({
   storage: memoryStorage,
   fileFilter: resumeFileFilter,
