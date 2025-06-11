@@ -5,7 +5,6 @@ const path = require("path");
 const fs = require("fs");
 
 // --- Helper function to ensure directory exists ---
-// Yeh function check karega ki directory maujood hai ya nahi, aur nahi hai to bana dega.
 const ensureDirExists = (dirPath) => {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -21,11 +20,10 @@ const serviceImageStorage = multer.diskStorage({
     } else {
       uploadPath = path.join(__dirname, '..', '..', 'uploads', 'services', 'sub');
     }
-    ensureDirExists(uploadPath); // Ensure the directory is created
+    ensureDirExists(uploadPath);
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // Create a unique filename to avoid overwriting
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const extension = path.extname(file.originalname);
     cb(null, file.fieldname + '-' + uniqueSuffix + extension);
@@ -40,14 +38,14 @@ const imageFileFilter = (req, file, cb) => {
   }
 };
 
-// Multer middleware for service images using diskStorage
+// Multer middleware for service images
 const uploadServiceImages = multer({
   storage: serviceImageStorage,
   fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
-}).any(); // .any() accepts all files from the form
+  limits: { fileSize: 5 * 1024 * 1024 }
+}).any();
 
-// --- Storage configuration for Resumes (on disk) ---
+// --- Storage configuration for Resumes ---
 const resumeStorage = multer.diskStorage({
     destination: (req, file, cb) => {
         const uploadPath = path.join(__dirname, '..', '..', 'uploads', 'resumes');
@@ -74,15 +72,16 @@ const resumeFileFilter = (req, file, cb) => {
   }
 };
 
-// Multer middleware for single resume upload using diskStorage
+// <<< BADLAV YAHAN >>>
+// Ab hum sirf multer instance banayenge, .single() yahan call nahi karenge.
 const uploadResume = multer({
   storage: resumeStorage,
   fileFilter: resumeFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-}).single('resumeFile'); // Use .single() if you expect only one file with the fieldname 'resumeFile'
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 
 module.exports = {
   uploadServiceImages,
-  uploadResume,
+  uploadResume, // Ab yeh ek multer instance hai, jiske paas .single method hai
 };
