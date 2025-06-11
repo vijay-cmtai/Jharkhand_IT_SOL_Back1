@@ -1,0 +1,10 @@
+{
+    "version": 2,
+    "name": "Jharkhand_IT_SOL_Back1",
+    "builds": [
+      { "src": "index.js", "use": "@vercel/node" }
+    ],
+    "routes": [
+      { "src": "/(.*)", "dest": "/index.js" }
+    ]
+  }
