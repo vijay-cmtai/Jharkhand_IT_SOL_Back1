@@ -1,62 +1,86 @@
-// backend/middleware/multerUpload.js
+// middleware/multerUpload.js
+
 const multer = require("multer");
-const path = require("path"); // Still useful for originalname extension if needed
+const path = require("path");
+const fs = require("fs");
 
-const memoryStorage = multer.memoryStorage();
-
-const resumeFileFilter = (req, file, cb) => {
-  console.log("[Multer resumeFileFilter] Incoming file:", {
-    originalname: file.originalname,
-    mimetype: file.mimetype,
-    fieldname: file.fieldname,
-  });
-  const allowedMimeTypes = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ];
-  if (allowedMimeTypes.includes(file.mimetype)) {
-    console.log("[Multer resumeFileFilter] File type ACCEPTED:", file.mimetype);
-    cb(null, true);
-  } else {
-    console.log(
-      "[Multer resumeFileFilter] File type REJECTED:",
-      file.mimetype,
-      "- Not in allowed list:",
-      allowedMimeTypes
-    );
-    cb(
-      new Error("Invalid resume file type. Only PDF, DOC, DOCX allowed."),
-      false
-    );
+// --- Helper function to ensure directory exists ---
+// Yeh function check karega ki directory maujood hai ya nahi, aur nahi hai to bana dega.
+const ensureDirExists = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
   }
 };
 
-// Multer instance for single resume upload
-const uploadResume = multer({
-  storage: memoryStorage, // USE MEMORY STORAGE
-  fileFilter: resumeFileFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
+// --- Storage configuration for Service Images ---
+const serviceImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    let uploadPath;
+    if (file.fieldname === 'mainImage') {
+      uploadPath = path.join(__dirname, '..', '..', 'uploads', 'services', 'main');
+    } else {
+      uploadPath = path.join(__dirname, '..', '..', 'uploads', 'services', 'sub');
+    }
+    ensureDirExists(uploadPath); // Ensure the directory is created
+    cb(null, uploadPath);
   },
+  filename: (req, file, cb) => {
+    // Create a unique filename to avoid overwriting
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const extension = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + extension);
+  }
 });
 
 const imageFileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image/")) {
     cb(null, true);
   } else {
-    cb(
-      new Error("Invalid service image file type. Only images allowed."),
-      false
-    );
+    cb(new Error("Invalid file type. Only images are allowed."), false);
   }
 };
 
+// Multer middleware for service images using diskStorage
 const uploadServiceImages = multer({
-  storage: memoryStorage, // Assuming service images might also go to Cloudinary or be processed in memory
+  storage: serviceImageStorage,
   fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
-}).any();
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+}).any(); // .any() accepts all files from the form
+
+// --- Storage configuration for Resumes (on disk) ---
+const resumeStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadPath = path.join(__dirname, '..', '..', 'uploads', 'resumes');
+        ensureDirExists(uploadPath);
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const extension = path.extname(file.originalname);
+        cb(null, 'resume-' + uniqueSuffix + extension);
+    }
+});
+
+const resumeFileFilter = (req, file, cb) => {
+  const allowedMimeTypes = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ];
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Invalid resume file type. Only PDF, DOC, DOCX allowed."), false);
+  }
+};
+
+// Multer middleware for single resume upload using diskStorage
+const uploadResume = multer({
+  storage: resumeStorage,
+  fileFilter: resumeFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+}).single('resumeFile'); // Use .single() if you expect only one file with the fieldname 'resumeFile'
+
 
 module.exports = {
   uploadServiceImages,
