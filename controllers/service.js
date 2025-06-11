@@ -20,9 +20,17 @@ const deleteFile = (filePath) => {
 // @desc    Create a new Service Category
 // @route   POST /services/create
 // @access  Private/Admin
+// @desc    Create a new Service Category
+// @route   POST /services/create
+// @access  Private/Admin
 exports.createServiceCategory = async (req, res) => {
   try {
     const { name, slug, description, isActive, subServicesData } = req.body;
+
+    // --- Input Validation ---
+    if (!name || !slug || !description || !subServicesData) {
+        return res.status(400).json({ error: "Missing required fields: name, slug, description, subServicesData." });
+    }
 
     const existingServiceByName = await ServiceCategory.findOne({ name });
     if (existingServiceByName) {
@@ -34,56 +42,71 @@ exports.createServiceCategory = async (req, res) => {
     }
 
     let parsedSubServices = [];
-    if (subServicesData) {
-      try {
+    try {
         parsedSubServices = JSON.parse(subServicesData);
-      } catch (e) {
+    } catch (e) {
         return res.status(400).json({ error: "Invalid subServicesData format. Expected JSON string." });
-      }
     }
 
+    // --- File Handling (CORRECTED LOGIC) ---
     let mainImagePath = null;
-    const subServiceImagePaths = [];
+    const subServiceImages = []; // Array to hold sub-service image objects
+
+    // req.files is an array from multer
     if (req.files && req.files.length > 0) {
       req.files.forEach((file) => {
+        // Construct path relative to project root
         const relativePath = `uploads/services/${file.destination.endsWith("main") ? "main" : "sub"}/${file.filename}`;
+        
         if (file.fieldname === "mainImage") {
           mainImagePath = relativePath;
         } else if (file.fieldname.startsWith("subServiceImage_")) {
+          // Get the index from "subServiceImage_0", "subServiceImage_1", etc.
           const index = parseInt(file.fieldname.split("_")[1]);
-          while (subServiceImagePaths.length <= index) {
-            subServiceImagePaths.push(null);
-          }
-          subServiceImagePaths[index] = relativePath;
+          subServiceImages.push({ index: index, path: relativePath });
         }
       });
     }
 
     if (!mainImagePath) {
+      // If files were uploaded but none was mainImage, delete them
+      if (req.files && req.files.length > 0) {
+          req.files.forEach(file => deleteFile(`uploads/services/${file.destination.endsWith("main") ? "main" : "sub"}/${file.filename}`));
+      }
       return res.status(400).json({ error: "Main image is required." });
     }
+    
+    // --- Combine parsed data with image paths ---
+    const finalSubServices = parsedSubServices.map((sub, index) => {
+      // Find the image for this sub-service index
+      const imageForSub = subServiceImages.find(img => img.index === index);
+      return {
+        name: sub.name,
+        slug: sub.slug,
+        description: sub.description,
+        imageUrl: imageForSub ? imageForSub.path : null, // Use image path if found, otherwise null
+      };
+    });
 
-    const finalSubServices = parsedSubServices.map((sub, index) => ({
-      ...sub,
-      imageUrl: subServiceImagePaths[index] || null,
-    }));
-
+    // --- Create and Save Document ---
     const newServiceCategory = new ServiceCategory({
       name,
       slug,
       description,
       mainImage: mainImagePath,
       subServices: finalSubServices,
-      isActive: isActive === "true",
+      isActive: isActive === "true", // Convert string from FormData to boolean
     });
 
-    const savedServiceCategory = await newServiceCategory.save();
+    const savedServiceCategory = await newService-category.save();
     res.status(201).json({
       message: "Service category created successfully",
       data: savedServiceCategory,
     });
+
   } catch (error) {
     console.error("Error creating service category:", error);
+    // Cleanup uploaded files on error
     if (req.files && req.files.length > 0) {
       req.files.forEach((file) => {
          const relativePath = `uploads/services/${file.destination.endsWith("main") ? "main" : "sub"}/${file.filename}`;
@@ -98,8 +121,10 @@ exports.createServiceCategory = async (req, res) => {
   }
 };
 
-
 // --- THIS IS THE NEW UPDATE FUNCTION ---
+// @desc    Update a Service Category
+// @route   PUT /services/:id
+// @access  Private/Admin
 // @desc    Update a Service Category
 // @route   PUT /services/:id
 // @access  Private/Admin
@@ -131,32 +156,34 @@ exports.updateServiceCategory = async (req, res) => {
       serviceToUpdate.mainImage = `uploads/services/main/${mainImageFile.filename}`;
     }
 
-    // --- Handle Sub-Services Update (Complex Logic) ---
-    // 1. Get IDs of incoming sub-services to check which ones were deleted
+    // --- Handle Sub-Services Update (More Robust Logic) ---
     const incomingSubServiceIds = new Set(parsedSubServices.map(sub => sub._id).filter(Boolean));
 
-    // 2. Delete images of sub-services that were removed
+    // Delete images of sub-services that were completely removed from the form
     serviceToUpdate.subServices.forEach(oldSub => {
-      if (!incomingSubServiceIds.has(oldSub._id.toString())) {
+      if (oldSub.imageUrl && !incomingSubServiceIds.has(oldSub._id.toString())) {
         deleteFile(oldSub.imageUrl);
       }
     });
 
-    // 3. Map over incoming data to build the final sub-services array
     const finalSubServices = parsedSubServices.map((subData, index) => {
       const newImageFile = req.files.find(f => f.fieldname === `subServiceImage_${index}`);
+      const oldSub = subData._id ? serviceToUpdate.subServices.find(s => s._id.toString() === subData._id) : null;
       
-      let finalImageUrl = subData.imageUrl; // Default to the URL sent from the client
+      let finalImageUrl = subData.imageUrl; // Default to the URL/path sent from the client
       
+      // Case 1: A new image file is uploaded for this sub-service
       if (newImageFile) {
-        // If a new image is uploaded, find the old one to delete it
-        if (subData._id) {
-            const oldSub = serviceToUpdate.subServices.find(s => s._id.toString() === subData._id);
-            if (oldSub && oldSub.imageUrl) {
-                deleteFile(oldSub.imageUrl);
-            }
+        // If it's an existing sub-service and had an old image, delete it
+        if (oldSub && oldSub.imageUrl) {
+            deleteFile(oldSub.imageUrl);
         }
         finalImageUrl = `uploads/services/sub/${newImageFile.filename}`;
+      } 
+      // Case 2: No new file, and the frontend sent a null/empty URL (meaning image was removed)
+      else if (oldSub && oldSub.imageUrl && !subData.imageUrl) {
+         deleteFile(oldSub.imageUrl);
+         finalImageUrl = null;
       }
       
       return {
@@ -165,6 +192,7 @@ exports.updateServiceCategory = async (req, res) => {
         slug: subData.slug,
         description: subData.description,
         imageUrl: finalImageUrl,
+        imagePublicId: subData.imagePublicId, // Keep this if you use it
       };
     });
 
@@ -180,6 +208,10 @@ exports.updateServiceCategory = async (req, res) => {
 
   } catch (error) {
     console.error("Error updating service category:", error);
+    // Cleanup any new files if update fails
+     if (req.files && req.files.length > 0) {
+      req.files.forEach(file => deleteFile(`uploads/services/${file.destination.endsWith("main") ? "main" : "sub"}/${file.filename}`));
+    }
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((val) => val.message);
       return res.status(400).json({ error: messages.join(", ") });
@@ -187,9 +219,6 @@ exports.updateServiceCategory = async (req, res) => {
     res.status(500).json({ error: "Server error while updating service category." });
   }
 };
-// --- END OF NEW UPDATE FUNCTION ---
-
-
 // @desc    Get all active Service Categories (for public view)
 // @route   GET /services/public
 // @access  Public
