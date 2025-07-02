@@ -7,7 +7,7 @@ const transporter = require("../config/nodemailerConfig"); // Ensure this path i
 
 // Ensure JWT_SECRET and FRONTEND_URL are in your .env file and loaded (e.g., with dotenv.config() in your main server file)
 const JWT_SECRET = process.env.JWT_SECRET || "Jharkhand_IT";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:8080"; // Adjust to your frontend port
+const FRONTEND_URL = process.env.FRONTEND_URL; // Adjust to your frontend port
 
 // --- Helper: Generate JWT ---
 const generateToken = (user) => {
